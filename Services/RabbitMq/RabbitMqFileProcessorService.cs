@@ -1,41 +1,40 @@
-﻿using InboundApi.Helpers;
+﻿using InboundApi.Data;
+using InboundApi.Helpers;
 using InboundApi.Models;
 using InboundApi.Services;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using RabbitMQ.Client.Events;
 using System.Text;
 using System.Text.Json;
 
 public class RabbitMqFileProcessorService : BackgroundService
 {
+    private readonly IRabbitMqService _rabbitMqService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<RabbitMqFileProcessorService> _logger;
     private readonly FileSettings _fileSettings;
 
     public RabbitMqFileProcessorService(
-        IServiceScopeFactory scopeFactory, 
+        IRabbitMqService rabbitMqService,
+        IServiceScopeFactory scopeFactory,
         ILogger<RabbitMqFileProcessorService> logger,
-        FileSettings fileSettings
-        )
+        IOptions<FileSettings> fileSettings)
     {
+        _rabbitMqService = rabbitMqService;
         _scopeFactory = scopeFactory;
         _logger = logger;
-        _fileSettings = fileSettings;
+        _fileSettings = fileSettings.Value;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using (var scope = _scopeFactory.CreateScope())
-        {
-            var rabbitMqService = scope.ServiceProvider.GetRequiredService<IRabbitMqService>();
-            rabbitMqService.StartConsuming(OnMessageReceived); // Set up the message handler
-            _logger.LogInformation(ResponseMessage.StartedConsumingMessages);
-        }
+        _rabbitMqService.StartConsuming(OnRequestReceived);
+        _logger.LogInformation(ResponseMessage.StartedConsumingMessages);
 
-        return Task.CompletedTask; // Keeps the service running without polling
+        return Task.CompletedTask;
     }
 
-    private void OnMessageReceived(object sender, BasicDeliverEventArgs eventArgs)
+    private void OnRequestReceived(object sender, BasicDeliverEventArgs eventArgs)
     {
         using (var scope = _scopeFactory.CreateScope())
         {
@@ -49,24 +48,28 @@ public class RabbitMqFileProcessorService : BackgroundService
 
                 if (request != null && request.FileContentLines.Count > 0)
                 {
-                    _ = ProcessMessageAsync(request, myLoggerService);
+                    myLoggerService.LogAsync(request, StatusEnum.SuccessfullyConsumed.ToString());
+                    _ = WritingFileToDestination(request);
+                    myLoggerService.LogAsync(request, StatusEnum.FileWritten.ToString());
+
                 }
 
-                // Acknowledge the message
                 var channel = ((EventingBasicConsumer)sender).Model;
                 channel.BasicAck(deliveryTag: eventArgs.DeliveryTag, multiple: false);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, ResponseMessage.ErrorProcessingMessage);
+                 myLoggerService.LogAsync(new MyRequestModel(), ResponseMessage.Error);
+                _logger.LogError(ex, ResponseMessage.ErrorConsumingRequest);
             }
         }
     }
 
-    private async Task ProcessMessageAsync(MyRequestModel request, IMyLoggerService myLoggerService)
+    private async Task WritingFileToDestination(MyRequestModel request)
     {
         try
         {
+
             string filesFolderPath = _fileSettings.DestinationFolderPath;
 
             if (!Directory.Exists(filesFolderPath))
@@ -78,12 +81,10 @@ public class RabbitMqFileProcessorService : BackgroundService
 
             await File.WriteAllLinesAsync(filePath, request.FileContentLines);
 
-            await myLoggerService.LogAsync(request, "File Written");
             _logger.LogInformation($"{request.FileName} : {ResponseMessage.FileWrittenSuccessfully}");
         }
         catch (Exception ex)
         {
-            await myLoggerService.LogAsync(request, "Error");
             _logger.LogError(ex, $"{ResponseMessage.ErrorProcessingFile} {request.FileName}");
         }
     }

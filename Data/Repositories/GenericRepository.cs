@@ -32,7 +32,6 @@ namespace InboundApi.Data.Repositories
             }
             catch (Exception e)
             {
-                throw;
             }
         }
 

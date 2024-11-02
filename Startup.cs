@@ -3,6 +3,7 @@ using InboundApi.Data.Repositories;
 using InboundApi.Models;
 using InboundApi.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.OpenApi.Models;
 using RabbitMQ.Client;
 
@@ -10,17 +11,21 @@ public class Startup
 {
     public Startup(IConfiguration configuration)
     {
-        Configuration = configuration;
+        _configuration = configuration;
     }
 
-    public IConfiguration Configuration { get; }
+    public IConfiguration _configuration { get; }
 
     public void ConfigureServices(IServiceCollection services)
     {
-        var rabbitMqSettings = Configuration.GetSection("RabbitMqSettings").Get<RabbitMqSettings>();
-        var fileSettings = Configuration.GetSection("FileSettings").Get<FileSettings>();
+        services.AddDbContext<AppDbContext>(options =>
+                options.UseSqlServer(_configuration.GetConnectionString("DefaultConnection")));
+
+        services.Configure<FileSettings>(_configuration.GetSection("FileSettings"));
+
+        var rabbitMqSettings = _configuration.GetSection("RabbitMqSettings").Get<RabbitMqSettings>();
         services.AddSingleton(rabbitMqSettings);
-        services.AddSingleton(fileSettings);
+
         services.AddSingleton<RabbitMqConnectionFactory>();
 
         // Register IConnection using the RabbitMqConnectionFactory
@@ -30,10 +35,9 @@ public class Startup
             return connectionFactory.CreateRabbitMqConnection();
         });
 
-        services.AddDbContext<AppDbContext>(options =>
-           options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
+      
 
-        services.AddScoped<IRabbitMqService, RabbitMqService>();
+        services.AddSingleton<IRabbitMqService, RabbitMqService>();
         services.AddScoped<IMyLoggerService, MyLoggerService>();
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
         services.AddScoped<IMyLoggerRepository, MyLoggerRepository>();

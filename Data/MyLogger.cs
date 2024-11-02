@@ -14,4 +14,5 @@ public partial class MyLogger
     public string? FileName { get; set; }
 
     public string? Status { get; set; }
+    public string? ErrorMessage { get; set; }
 }

@@ -3,6 +3,8 @@ using System.Threading.Tasks;
 using InboundApi.Models;
 using InboundApi.Services;
 using System.Net;
+using InboundApi.Data;
+using InboundApi.Helpers;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -20,34 +22,31 @@ public class InboundController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> ReceiveRequest([FromBody] MyRequestModel request)
     {
-        await _myLoggerService.LogAsync(request, "Received");
+        await _myLoggerService.LogAsync(request, StatusEnum.Received.ToString());
 
         try
         {
-            // Send the message to RabbitMQ
             await _rabbitMqService.SendMessageToQueueAsync(request);
 
-            // Log success after sending
-            await _myLoggerService.LogAsync(request, "Successfully Processed");
+            await _myLoggerService.LogAsync(request, StatusEnum.SuccessfullyProcessed.ToString());
 
             var response = new MyResponseModel
             {
                 ReturnCode = HttpStatusCode.OK,
                 FileName = request.FileName,
-                Status = "Successfully Processed"
+                Status = StatusEnum.SuccessfullyProcessed.ToString()
             };
 
             return Ok(response);
         }
         catch (Exception ex)
         {
-            // Log failure if there is an exception
-            await _myLoggerService.LogAsync(request, $"Failed: {ex.Message}");
+            await _myLoggerService.LogAsync(request, StatusEnum.ErrorProcessing.ToString());
 
             return StatusCode(500, new
             {
                 ReturnCode = HttpStatusCode.InternalServerError,
-                Message = "An error occurred while processing the request.",
+                Message = ResponseMessage.ErrorProcessingRequest,
                 Details = ex.Message
             });
         }

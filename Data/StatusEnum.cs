@@ -4,6 +4,9 @@
     {
         Received,
         SuccessfullyProcessed,
-        Error
+        SuccessfullyConsumed,
+        FileWritten,
+        ErrorConsuming,
+        ErrorProcessing
     }
 }

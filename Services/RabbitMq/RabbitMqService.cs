@@ -63,9 +63,9 @@ namespace InboundApi.Services
             _channel.BasicConsume(queue: _rabbitMqSettings.QueueName, autoAck: false, consumer: consumer);
         }
 
-        ~RabbitMqService()
-        {
-            _channel?.Dispose();
-        }
+        //~RabbitMqService()
+        //{
+        //    _channel?.Dispose();
+        //}
     }
 }
